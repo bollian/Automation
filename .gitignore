@@ -30,3 +30,7 @@
 
 # Debug files
 *.dSYM/
+
+# my stuff
+.buildcop
+bin/*
