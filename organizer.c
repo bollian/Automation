@@ -1,6 +1,7 @@
 #include <alloca.h>
 #include <errno.h>
-// TODO: catch interrupts #include <linux/sched.h>
+// TODO: catch interrupts in order to close resources #include <linux/sched.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,11 @@
 
 #define NAME_MAX 256
 #define BUF_SIZE (1024 * (sizeof(struct inotify_event) + NAME_MAX))
+
+FILE* err_file = NULL;
+void writeError(char*, ...);
+FILE* debug_file = NULL;
+void writeDebug(char*, ...);
 
 int getFileSize(char*);
 void moveFile(char*, char*);
@@ -27,14 +33,23 @@ size_t getDigitCount(int);
 int main(int argc, char** argv)
 {
 	int return_status = 0;
+	char* user_dir = getpwuid(getuid())->pw_dir;
 	char watch_dir[NAME_MAX];
-	snprintf(watch_dir, NAME_MAX, "%s%s", getpwuid(getuid())->pw_dir, "/Downloads/");
-	printf("Watch directory: %s\n", watch_dir);
+	char err_file_name[NAME_MAX];
+	
+	snprintf(err_file_name, NAME_MAX, "%s/%s", user_dir, "organizer.log");
+	err_file = fopen(err_file_name, "w");
+	debug_file = stdout;
+	
+	snprintf(watch_dir, NAME_MAX, "%s/%s", user_dir, "Downloads/");
+	
+	writeDebug("Watch directory: %s", watch_dir);
+	writeDebug("Log file: %s", err_file_name);
 	
 	int inotify_fd = inotify_init1(0);
 	if (inotify_fd < 0)
 	{
-		perror("Failed to create inotify object");
+		writeError("Failed to create inotify object");
 		return_status = 1;
 		goto EXIT;
 	}
@@ -42,11 +57,11 @@ int main(int argc, char** argv)
 	int watch_desc = inotify_add_watch(inotify_fd, watch_dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE_SELF);
 	if (watch_desc < 0)
 	{
-		perror("Failed to add watch to inotify object");
+		writeError("Failed to add watch to inotify object");
 		return_status = 1;
 		goto EXIT;
 	}
-	printf("Created watch %d from inotify object %d\n", watch_desc, inotify_fd);
+	writeDebug("Created watch %d from inotify object %d", watch_desc, inotify_fd);
 	
 	struct inotify_event* event;
 	int length = 0;
@@ -63,7 +78,7 @@ int main(int argc, char** argv)
 			
 			if (event->mask & IN_DELETE_SELF)
 			{
-				perror("Watch directory was deleted");
+				writeError("Watch directory was deleted");
 				return_status = 2;
 				goto EXIT;
 			}
@@ -221,13 +236,11 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 	end_name = safe_name;
 	name_len = safe_len; // shouldn't be necessary, but it keeps a safe state
 	
-	printf("Rename \"%s\" to \"%s\"\n", from, end_name);
-	/*
+	writeDebug("Rename \"%s\" to \"%s\"", from, end_name);
 	if (rename(from, end_name) < 0)
 	{
-		perror("Unable to move file to destination");
+		writeError("Unable to move file to destination");
 	}
-	*/
 	free(end_name);
 }
 
@@ -390,4 +403,40 @@ size_t getDigitCount(int num)
 		num /= 10;
 	}
 	return count;
+}
+
+void writeError(char* format, ...)
+{
+	char buffer[1024];
+	va_list arg_list;
+	va_start(arg_list, format);
+	vsnprintf(buffer, 1024, format, arg_list);
+	va_end(arg_list);
+	
+	if (err_file)
+	{
+		fprintf(err_file, "Error: %s; %s\n", buffer, strerror(errno));
+	}
+	else
+	{
+		fprintf(stderr, "Failed to write error to error file \"%s\"\n", buffer);
+	}
+}
+
+void writeDebug(char* format, ...)
+{
+	char buffer[1024];
+	va_list arg_list;
+	va_start(arg_list, format);
+	vsnprintf(buffer, 1024, format, arg_list);
+	va_end(arg_list);
+	
+	if (debug_file)
+	{
+		fprintf(debug_file, "Debug: %s\n", buffer);
+	}
+	else
+	{
+		writeError("Failed to write message to debug file \"%s\"", buffer);
+	}
 }
