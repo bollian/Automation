@@ -1,34 +1,15 @@
-#include <alloca.h>
 #include <errno.h>
 // TODO: catch interrupts in order to close resources #include <linux/sched.h>
-#include <stdarg.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/inotify.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <pwd.h>
 
-#define NAME_MAX 256
-#define BUF_SIZE (1024 * (sizeof(struct inotify_event) + NAME_MAX))
+#include <organizer.h>
 
 FILE* err_file = NULL;
-void writeError(char*, ...);
 FILE* debug_file = NULL;
-void writeDebug(char*, ...);
-
-int getFileSize(char*);
-void moveFile(char*, char*);
-const char* eventMaskString(uint32_t);
-void printEvent(struct inotify_event*);
-
-// string ops
-char* strrfind(char*, char);
-bool strend(char*, char*);
-
-size_t getDigitCount(int);
 
 int main(int argc, char** argv)
 {
@@ -63,13 +44,23 @@ int main(int argc, char** argv)
 	}
 	writeDebug("Created watch %d from inotify object %d", watch_desc, inotify_fd);
 	
+	return_status = process(inotify_fd, watch_dir);
+	
+	EXIT:
+	inotify_rm_watch(inotify_fd, watch_desc);
+	close(inotify_fd);
+	return return_status;
+}
+
+int process(int fd, char* watch_dir)
+{
 	struct inotify_event* event;
 	int length = 0;
 	char buffer[BUF_SIZE];
 	
 	while (true)
 	{
-		length = read(inotify_fd, buffer, BUF_SIZE);
+		length = read(fd, buffer, BUF_SIZE);
 		for (int i = 0; i < length;)
 		{
 			event = (struct inotify_event*)(buffer + i);
@@ -79,8 +70,7 @@ int main(int argc, char** argv)
 			if (event->mask & IN_DELETE_SELF)
 			{
 				writeError("Watch directory was deleted");
-				return_status = 2;
-				goto EXIT;
+				return 2;
 			}
 			else // if (event->mask & (IN_MOVED_TO | IN_CLOSE_WRITE)) inotify allows event filtering, making condition unnecessary
 			{
@@ -172,17 +162,10 @@ int main(int argc, char** argv)
 		}
 	}
 	
-	EXIT:
-	inotify_rm_watch(inotify_fd, watch_desc);
-	close(inotify_fd);
-	return return_status;
+	writeError("Reached end of process");
+	return 0; // shouldn't ever be possible, infinite loop
 }
 
-/**
- * Determine the size of the file specified by the name as found by fopen
- * @param  filename the name of the file, follows the same guidelines as fopen
- * @return          -1 if the file's not found, the byte count otherwise
- */
 int getFileSize(char* filename)
 {
 	if (access(filename, F_OK) == -1) // check to make sure the file exists
@@ -197,12 +180,6 @@ int getFileSize(char* filename)
 	}
 }
 
-/**
- * moves file from parameter 1 to the directory in parameter 2
- * Performs basic error checking
- * @param destination a directory name
- * @param from        a file name, can be a directory
- */
 void moveFile(char* destination, char* from) // TODO: try to reduce the amount of dynamic memory allocation
 {
 	char* filename = strrfind(from, '/') + 1;
@@ -244,12 +221,6 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 	free(end_name);
 }
 
-/**
- * finds the last instance of a character in a string
- * @param  str  the string to search
- * @param  find the character to find
- * @return      a pointer to the result
- */
 char* strrfind(char* str, char find)
 {
 	size_t len = strlen(str);
@@ -263,12 +234,6 @@ char* strrfind(char* str, char find)
 	return str + len;
 }
 
-/**
- * check whether string 1 ends with string 2
- * @param  str the string to check against.  should be as long or longer than the end parameter
- * @param  end the string that should exist at the end of the first parameter
- * @return     true if parameter end is found at the end of parameter str
- */
 bool strend(char* str, char* end)
 {
 	size_t end_len = strlen(end);
@@ -281,10 +246,6 @@ bool strend(char* str, char* end)
 	return 0 == strncmp(str + str_len - end_len, end, end_len);
 }
 
-/**
- * prints a basic string representation of an inotify event to stdout
- * @param event the event to print
- */
 void printEvent(struct inotify_event* event)
 {
 	printf("inotify_event(Watch: %d, Mask(", event->wd);
@@ -328,11 +289,6 @@ const char* const MOVED_TO = "IN_MOVED_TO";
 const char* const OPEN = "IN_OPEN";
 const char* const NO_EVENT = "";
 
-/**
- * get the string representation of the rightmost set event bit found in the mask
- * @param  mask the event mask
- * @return      an immutable string, "" if no event is found
- */
 const char* eventMaskString(uint32_t mask)
 {
 	if (mask & IN_ACCESS)
