@@ -6,10 +6,17 @@
 #include <sys/stat.h>
 #include <pwd.h>
 
+#include <libnotify/notify.h>
+
 #include <organizer.h>
 
+NotifyNotification* notification = NULL;
+
 FILE* err_file = NULL;
+FILE* warning_file = NULL;
 FILE* debug_file = NULL;
+
+bool paused = false;
 
 int main(int argc, char** argv)
 {
@@ -20,6 +27,7 @@ int main(int argc, char** argv)
 	
 	snprintf(err_file_name, NAME_MAX, "%s/%s", user_dir, "organizer.log");
 	err_file = fopen(err_file_name, "w");
+	warning_file = err_file; // may end up being a different file in the future
 	debug_file = stdout;
 	
 	snprintf(watch_dir, NAME_MAX, "%s/%s", user_dir, "Downloads/");
@@ -43,6 +51,11 @@ int main(int argc, char** argv)
 		goto EXIT;
 	}
 	writeDebug("Created watch %d from inotify object %d", watch_desc, inotify_fd);
+	
+	if (!notify_init("organizer"))
+	{
+		writeError("Unable to initialize inotify");
+	}
 	
 	return_status = process(inotify_fd, watch_dir);
 	
@@ -69,7 +82,7 @@ int process(int fd, char* watch_dir)
 			
 			if (event->mask & IN_DELETE_SELF)
 			{
-				writeError("Watch directory was deleted");
+				writeWarning("Watch directory was deleted");
 				return 2;
 			}
 			else // if (event->mask & (IN_MOVED_TO | IN_CLOSE_WRITE)) inotify allows event filtering, making condition unnecessary
@@ -83,7 +96,7 @@ int process(int fd, char* watch_dir)
 				int file_size = getFileSize(fullname);
 				printf("File size: %d\n", file_size);
 				
-				if (file_size) // firefox likes to create empty files for the temp files to be renamed to
+				if (file_size > 0) // firefox likes to create empty files for the temp files to be renamed to
 				{
 					printf("Extension: %s\n", extension);
 					if (strend(extension, ".txt") || strend(extension, ".pdf"))
@@ -213,10 +226,25 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 	end_name = safe_name;
 	name_len = safe_len; // shouldn't be necessary, but it keeps a safe state
 	
+	// send notification
+	char notify_message[NAME_MAX];
+	snprintf(notify_message, NAME_MAX, "Rename \"%s\" to \"%s\"", from , end_name);
+	if (paused)
+	{
+		writeDebug("sent paused notification");
+		sendPausedNotification(notify_message);
+	}
+	else
+	{
+		writeDebug("sent moving notification");
+		sendMovingNotification(notify_message);
+	}
+	
+	// write to status log
 	writeDebug("Rename \"%s\" to \"%s\"", from, end_name);
 	if (rename(from, end_name) < 0)
 	{
-		writeError("Unable to move file to destination");
+		writeWarning("Unable to move file to destination");
 	}
 	free(end_name);
 }
@@ -379,6 +407,24 @@ void writeError(char* format, ...)
 	}
 }
 
+void writeWarning(char* format, ...)
+{
+	char buffer[1024];
+	va_list arg_list;
+	va_start(arg_list, format);
+	vsnprintf(buffer, 1024, format, arg_list);
+	va_end(arg_list);
+	
+	if (warning_file)
+	{
+		fprintf(warning_file, "Warning: %sn", buffer);
+	}
+	else
+	{
+		printf("Warning: %s\n", buffer);
+	}
+}
+
 void writeDebug(char* format, ...)
 {
 	char buffer[1024];
@@ -393,6 +439,46 @@ void writeDebug(char* format, ...)
 	}
 	else
 	{
-		writeError("Failed to write message to debug file \"%s\"", buffer);
+		writeWarning("Failed to write message to debug file \"%s\"", buffer);
 	}
+}
+
+void sendMovingNotification(char* message)
+{
+	if (notify_is_initted())
+	{
+		char summary[] = "Files Organized";
+		if (notification)
+		{
+			notify_notification_update(notification, summary, message, NULL);
+		}
+		else
+		{
+			notification = notify_notification_new(summary, message, NULL);
+		}
+		
+		GError* gerror = NULL;
+		if (g_list_find_custom(notify_get_server_caps(), "actions", (GCompareFunc)g_strcmp0) || true)
+		{
+			// display notification w/ buttons
+			if (notify_notification_show(notification, &gerror) == false)
+			{
+				writeWarning("Failed to send notification (%s): %s", summary, gerror->message);
+				g_error_free(gerror);
+			}
+		}
+		else
+		{
+			// just display message notification
+		}
+	}
+	else
+	{
+		writeWarning("Unitialized libnotify while attempting to display notification");
+	}
+}
+
+void sendPausedNotification(char* message)
+{
+	
 }
