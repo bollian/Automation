@@ -10,8 +10,6 @@
 
 #include <organizer.h>
 
-NotifyNotification* notification = NULL;
-
 FILE* err_file = NULL;
 FILE* warning_file = NULL;
 FILE* debug_file = NULL;
@@ -24,17 +22,17 @@ int main(int argc, char** argv)
 	char* user_dir = getpwuid(getuid())->pw_dir;
 	char watch_dir[NAME_MAX];
 	char err_file_name[NAME_MAX];
-	
+
 	snprintf(err_file_name, NAME_MAX, "%s/%s", user_dir, "organizer.log");
 	err_file = fopen(err_file_name, "w");
 	warning_file = err_file; // may end up being a different file in the future
 	debug_file = stdout;
-	
+
 	snprintf(watch_dir, NAME_MAX, "%s/%s", user_dir, "Downloads/");
-	
+
 	writeDebug("Watch directory: %s", watch_dir);
 	writeDebug("Log file: %s", err_file_name);
-	
+
 	int inotify_fd = inotify_init1(0);
 	if (inotify_fd < 0)
 	{
@@ -42,7 +40,7 @@ int main(int argc, char** argv)
 		return_status = 1;
 		goto EXIT;
 	}
-	
+
 	int watch_desc = inotify_add_watch(inotify_fd, watch_dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE_SELF);
 	if (watch_desc < 0)
 	{
@@ -51,14 +49,14 @@ int main(int argc, char** argv)
 		goto EXIT;
 	}
 	writeDebug("Created watch %d from inotify object %d", watch_desc, inotify_fd);
-	
+
 	if (!notify_init("organizer"))
 	{
 		writeError("Unable to initialize inotify");
 	}
-	
+
 	return_status = process(inotify_fd, watch_dir);
-	
+
 	EXIT:
 	inotify_rm_watch(inotify_fd, watch_desc);
 	close(inotify_fd);
@@ -70,7 +68,7 @@ int process(int fd, char* watch_dir)
 	struct inotify_event* event;
 	int length = 0;
 	char buffer[BUF_SIZE];
-	
+
 	while (true)
 	{
 		length = read(fd, buffer, BUF_SIZE);
@@ -79,7 +77,7 @@ int process(int fd, char* watch_dir)
 			event = (struct inotify_event*)(buffer + i);
 			printf("\n");
 			printEvent(event);
-			
+
 			if (event->mask & IN_DELETE_SELF)
 			{
 				writeWarning("Watch directory was deleted");
@@ -88,14 +86,14 @@ int process(int fd, char* watch_dir)
 			else // if (event->mask & (IN_MOVED_TO | IN_CLOSE_WRITE)) inotify allows event filtering, making condition unnecessary
 			{
 				char* extension = strstr(event->name, ".");
-				
+
 				size_t name_len = strlen(watch_dir) + strlen(event->name) + 1;
 				char* fullname = malloc(name_len);
 				snprintf(fullname, name_len, "%s%s", watch_dir, event->name);
-				
+
 				int file_size = getFileSize(fullname);
 				printf("File size: %d\n", file_size);
-				
+
 				if (file_size > 0) // firefox likes to create empty files for the temp files to be renamed to
 				{
 					printf("Extension: %s\n", extension);
@@ -142,19 +140,19 @@ int process(int fd, char* watch_dir)
 					{
 						moveFile("/home/calcifer/Pictures/gifs", fullname);
 					}
-					else if (strend(extension, ".jpg") || strend(extension, ".jpeg") || 
-					      strend(extension, ".png") || strend(extension, ".bmp") || 
-					      strend(extension, ".svg") || 
+					else if (strend(extension, ".jpg") || strend(extension, ".jpeg") ||
+					      strend(extension, ".png") || strend(extension, ".bmp") ||
+					      strend(extension, ".svg") ||
 					      strend(extension, ".tif") || strend(extension, ".tiff"))
 					{
 						moveFile("/home/calcifer/Pictures", fullname);
 					}
-					else if (strend(extension, ".c") || strend(extension, ".h") || 
-					      strend(extension, ".cpp") || strend(extension, ".hpp") || 
-					      strend(extension, ".py") || strend(extension, ".py3") || 
-					      strend(extension, ".rb") || 
-					      strend(extension, ".cs") || 
-					      strend(extension, ".php") || strend(extension, ".js") || strend(extension, ".html") || 
+					else if (strend(extension, ".c") || strend(extension, ".h") ||
+					      strend(extension, ".cpp") || strend(extension, ".hpp") ||
+					      strend(extension, ".py") || strend(extension, ".py3") ||
+					      strend(extension, ".rb") ||
+					      strend(extension, ".cs") ||
+					      strend(extension, ".php") || strend(extension, ".js") || strend(extension, ".html") ||
 					      strend(extension, ".java"))
 					{
 						moveFile("/home/calcifer/Documents/code/unorganized", fullname);
@@ -170,11 +168,11 @@ int process(int fd, char* watch_dir)
 				}
 				free(fullname);
 			}
-			
+
 			i += sizeof(struct inotify_event) + event->len;
 		}
 	}
-	
+
 	writeError("Reached end of process");
 	return 0; // shouldn't ever be possible, infinite loop
 }
@@ -209,7 +207,7 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 		end_name = malloc(name_len);
 		snprintf(end_name, name_len, "%s%s", destination, filename);
 	}
-	
+
 	// add (some number) to the end of the filename to avoid overwriting data
 	char* safe_name = malloc(name_len);
 	strcpy(safe_name, end_name);
@@ -225,7 +223,7 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 	free(end_name);
 	end_name = safe_name;
 	name_len = safe_len; // shouldn't be necessary, but it keeps a safe state
-	
+
 	// send notification
 	char notify_message[NAME_MAX];
 	snprintf(notify_message, NAME_MAX, "Rename \"%s\" to \"%s\"", from , end_name);
@@ -239,7 +237,7 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 		writeDebug("sent moving notification");
 		sendMovingNotification(notify_message);
 	}
-	
+
 	// write to status log
 	writeDebug("Rename \"%s\" to \"%s\"", from, end_name);
 	if (rename(from, end_name) < 0)
@@ -270,14 +268,14 @@ bool strend(char* str, char* end)
 	{
 		return false;
 	}
-	
+
 	return 0 == strncmp(str + str_len - end_len, end, end_len);
 }
 
 void printEvent(struct inotify_event* event)
 {
 	printf("inotify_event(Watch: %d, Mask(", event->wd);
-	
+
 	const char* type_str;
 	uint32_t i = 0;
 	for (; i < 32; ++i)
@@ -290,7 +288,7 @@ void printEvent(struct inotify_event* event)
 			break;
 		}
 	}
-	
+
 	for (; i < 32; ++i)
 	{
 		type_str = eventMaskString(event->mask & (1 << i));
@@ -299,7 +297,7 @@ void printEvent(struct inotify_event* event)
 			printf("|%s", type_str);
 		}
 	}
-	
+
 	printf("), ID: %d, Name: %s)\n", event->cookie, event->name);
 }
 
@@ -379,7 +377,7 @@ size_t getDigitCount(int num)
 	{
 		return 1;
 	}
-	
+
 	size_t count = 0;
 	while (num != 0)
 	{
@@ -396,7 +394,7 @@ void writeError(char* format, ...)
 	va_start(arg_list, format);
 	vsnprintf(buffer, 1024, format, arg_list);
 	va_end(arg_list);
-	
+
 	if (err_file)
 	{
 		fprintf(err_file, "Error: %s; %s\n", buffer, strerror(errno));
@@ -414,7 +412,7 @@ void writeWarning(char* format, ...)
 	va_start(arg_list, format);
 	vsnprintf(buffer, 1024, format, arg_list);
 	va_end(arg_list);
-	
+
 	if (warning_file)
 	{
 		fprintf(warning_file, "Warning: %sn", buffer);
@@ -432,7 +430,7 @@ void writeDebug(char* format, ...)
 	va_start(arg_list, format);
 	vsnprintf(buffer, 1024, format, arg_list);
 	va_end(arg_list);
-	
+
 	if (debug_file)
 	{
 		fprintf(debug_file, "Debug: %s\n", buffer);
@@ -448,28 +446,12 @@ void sendMovingNotification(char* message)
 	if (notify_is_initted())
 	{
 		char summary[] = "Files Organized";
-		if (notification)
-		{
-			notify_notification_update(notification, summary, message, NULL);
-		}
-		else
-		{
-			notification = notify_notification_new(summary, message, NULL);
-		}
-		
+		NotifyNotification* notification = notify_notification_new(summary, message, NULL);
 		GError* gerror = NULL;
-		if (g_list_find_custom(notify_get_server_caps(), "actions", (GCompareFunc)g_strcmp0) || true)
+		if (notify_notification_show(notification, &gerror) == false)
 		{
-			// display notification w/ buttons
-			if (notify_notification_show(notification, &gerror) == false)
-			{
-				writeWarning("Failed to send notification (%s): %s", summary, gerror->message);
-				g_error_free(gerror);
-			}
-		}
-		else
-		{
-			// just display message notification
+			writeWarning("Failed to send notification (%s: %s): %s", summary, message, gerror->message);
+			g_error_free(gerror);
 		}
 	}
 	else
@@ -480,5 +462,5 @@ void sendMovingNotification(char* message)
 
 void sendPausedNotification(char* message)
 {
-	
+	sendMovingNotification(message); // TODO: implement paused state
 }
