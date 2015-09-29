@@ -59,11 +59,14 @@ int main(int argc, char** argv)
 	return_status = process(inotify_fd, watch_dir);
 
 	EXIT:
-	if (watch_desc >= 0)
+	if (inotify_fd >= 0)
 	{
-		inotify_rm_watch(inotify_fd, watch_desc);
+		if (watch_desc >= 0)
+		{
+			inotify_rm_watch(inotify_fd, watch_desc);
+		}
+		close(inotify_fd);
 	}
-	close(inotify_fd);
 	return return_status;
 }
 
