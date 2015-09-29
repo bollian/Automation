@@ -33,6 +33,7 @@ int main(int argc, char** argv)
 	writeDebug("Watch directory: %s", watch_dir);
 	writeDebug("Log file: %s", err_file_name);
 
+	int watch_desc = -1;
 	int inotify_fd = inotify_init1(0);
 	if (inotify_fd < 0)
 	{
@@ -41,7 +42,7 @@ int main(int argc, char** argv)
 		goto EXIT;
 	}
 
-	int watch_desc = inotify_add_watch(inotify_fd, watch_dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE_SELF);
+	watch_desc = inotify_add_watch(inotify_fd, watch_dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE_SELF);
 	if (watch_desc < 0)
 	{
 		writeError("Failed to add watch to inotify object");
@@ -58,7 +59,10 @@ int main(int argc, char** argv)
 	return_status = process(inotify_fd, watch_dir);
 
 	EXIT:
-	inotify_rm_watch(inotify_fd, watch_desc);
+	if (watch_desc >= 0)
+	{
+		inotify_rm_watch(inotify_fd, watch_desc);
+	}
 	close(inotify_fd);
 	return return_status;
 }
