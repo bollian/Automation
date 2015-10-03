@@ -1,74 +1,18 @@
-#include <errno.h>
-// TODO: catch interrupts in order to close resources #include <linux/sched.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/inotify.h>
 #include <sys/stat.h>
-#include <pwd.h>
+#include <unistd.h>
 
-#include <libnotify/notify.h>
+#include <organizer/common.h>
+#include <organizer/files.h>
+#include <organizer/notification.h>
 
-#include <organizer.h>
-
-FILE* err_file = NULL;
-FILE* warning_file = NULL;
-FILE* debug_file = NULL;
-
-bool paused = false;
-
-int main(int argc, char** argv)
-{
-	int return_status = 0;
-	char* user_dir = getpwuid(getuid())->pw_dir;
-	char watch_dir[NAME_MAX];
-	char err_file_name[NAME_MAX];
-
-	snprintf(err_file_name, NAME_MAX, "%s/%s", user_dir, "organizer.log");
-	err_file = fopen(err_file_name, "w");
-	warning_file = err_file; // may end up being a different file in the future
-	debug_file = stdout;
-
-	snprintf(watch_dir, NAME_MAX, "%s/%s", user_dir, "Downloads/");
-
-	writeDebug("Watch directory: %s", watch_dir);
-	writeDebug("Log file: %s", err_file_name);
-
-	int watch_desc = -1;
-	int inotify_fd = inotify_init1(0);
-	if (inotify_fd < 0)
-	{
-		writeError("Failed to create inotify object");
-		return_status = 1;
-		goto EXIT;
-	}
-
-	watch_desc = inotify_add_watch(inotify_fd, watch_dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE_SELF);
-	if (watch_desc < 0)
-	{
-		writeError("Failed to add watch to inotify object");
-		return_status = 1;
-		goto EXIT;
-	}
-	writeDebug("Created watch %d from inotify object %d", watch_desc, inotify_fd);
-
-	if (!notify_init("organizer"))
-	{
-		writeError("Unable to initialize inotify");
-	}
-
-	return_status = process(inotify_fd, watch_dir);
-
-	EXIT:
-	if (inotify_fd >= 0)
-	{
-		if (watch_desc >= 0)
-		{
-			inotify_rm_watch(inotify_fd, watch_desc);
-		}
-		close(inotify_fd);
-	}
-	return return_status;
-}
+char* watch_dir = NULL;
+int inotify_fd = -1;
+int watch_desc = -1;
 
 int process(int fd, char* watch_dir)
 {
@@ -232,9 +176,9 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 	name_len = safe_len; // shouldn't be necessary, but it keeps a safe state
 
 	// send notification
-	char notify_message[NAME_MAX];
-	snprintf(notify_message, NAME_MAX, "Rename \"%s\" to \"%s\"", from , end_name);
-	if (paused)
+	char notify_message[FILE_NAME_MAX];
+	snprintf(notify_message, FILE_NAME_MAX, "Rename \"%s\" to \"%s\"", from , end_name);
+	if (isPaused())
 	{
 		writeDebug("sent paused notification");
 		sendPausedNotification(notify_message);
@@ -254,29 +198,46 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 	free(end_name);
 }
 
-char* strrfind(char* str, char find)
+InotifyDetail initInotify(char* dirname)
 {
-	size_t len = strlen(str);
-	for (int x = 1; x <= len; ++x)
+	InotifyDetail detail = {
+		.inotify_fd = -1,
+		.watch_desc = -1
+	};
+	
+	detail.inotify_fd = inotify_init1(0);
+	if (detail.inotify_fd < 0)
 	{
-		if (str[len - x] == find)
-		{
-			return str + len - x;
-		}
+		writeError("Failed to create inotify object");
+		return detail;
 	}
-	return str + len;
+	
+	detail.watch_desc = inotify_add_watch(detail.inotify_fd, dirname, IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE_SELF);
+	if (detail.watch_desc < 0)
+	{
+		writeError("Failed to add watch to inotify object");
+		return detail;
+	}
+	
+	inotify_fd = detail.inotify_fd;
+	watch_desc = detail.watch_desc;
+	watch_dir = malloc(strlen(dirname) + 1);
+	strcpy(watch_dir, dirname);
+	
+	return detail;
 }
 
-bool strend(char* str, char* end)
+void closeInotify()
 {
-	size_t end_len = strlen(end);
-	size_t str_len = strlen(str);
-	if (end_len > str_len)
+	if (inotify_fd >= 0)
 	{
-		return false;
+		if (watch_desc >= 0)
+		{
+			inotify_rm_watch(inotify_fd, watch_desc);
+			free(watch_dir);
+		}
+		close(inotify_fd);
 	}
-
-	return 0 == strncmp(str + str_len - end_len, end, end_len);
 }
 
 void printEvent(struct inotify_event* event)
@@ -376,98 +337,4 @@ const char* eventMaskString(uint32_t mask)
 	{
 		return NO_EVENT;
 	}
-}
-
-size_t getDigitCount(int num)
-{
-	if (num == 0)
-	{
-		return 1;
-	}
-
-	size_t count = 0;
-	while (num != 0)
-	{
-		++count;
-		num /= 10;
-	}
-	return count;
-}
-
-void writeError(char* format, ...)
-{
-	char buffer[1024];
-	va_list arg_list;
-	va_start(arg_list, format);
-	vsnprintf(buffer, 1024, format, arg_list);
-	va_end(arg_list);
-
-	if (err_file)
-	{
-		fprintf(err_file, "Error: %s; %s\n", buffer, strerror(errno));
-	}
-	else
-	{
-		fprintf(stderr, "Failed to write error to error file \"%s\"\n", buffer);
-	}
-}
-
-void writeWarning(char* format, ...)
-{
-	char buffer[1024];
-	va_list arg_list;
-	va_start(arg_list, format);
-	vsnprintf(buffer, 1024, format, arg_list);
-	va_end(arg_list);
-
-	if (warning_file)
-	{
-		fprintf(warning_file, "Warning: %sn", buffer);
-	}
-	else
-	{
-		printf("Warning: %s\n", buffer);
-	}
-}
-
-void writeDebug(char* format, ...)
-{
-	char buffer[1024];
-	va_list arg_list;
-	va_start(arg_list, format);
-	vsnprintf(buffer, 1024, format, arg_list);
-	va_end(arg_list);
-
-	if (debug_file)
-	{
-		fprintf(debug_file, "Debug: %s\n", buffer);
-	}
-	else
-	{
-		writeWarning("Failed to write message to debug file \"%s\"", buffer);
-	}
-}
-
-void sendMovingNotification(char* message)
-{
-	if (notify_is_initted())
-	{
-		char summary[] = "Files Organized";
-		NotifyNotification* notification = notify_notification_new(summary, message, NULL);
-		GError* gerror = NULL;
-		if (notify_notification_show(notification, &gerror) == false)
-		{
-			writeWarning("Failed to send notification (%s: %s): %s", summary, message, gerror->message);
-			g_error_free(gerror);
-		}
-	}
-	else
-	{
-		writeWarning("Unitialized libnotify while attempting to display notification");
-	}
-}
-
-void sendPausedNotification(char* message)
-{
-	sendMovingNotification(message); // TODO: implement paused state
 }
