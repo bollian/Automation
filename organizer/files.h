@@ -7,6 +7,27 @@
 // File management //
 /////////////////////
 
+typedef struct
+{
+	char* to;
+	char* from;
+} FileChange;
+
+/**
+ * initializes an existing file change with dynamic string copies
+ * @param fchange the existing FileChange
+ * @param to      where the file was moved to
+ * @param from    where the file was moved from
+ * @return the passed FileChange, NULL if allocation error
+ */
+FileChange* FileChange_init(FileChange* fchange, char* to, char* from);
+
+/**
+ * frees memory used by a FileChange, but not the FileChange itself
+ * @param fchange the file change with dynamic members
+ */
+void FileChange_free(FileChange* fchange);
+
 /**
  * intercepts and handles events
  * @param fd inotify file descriptor
@@ -24,10 +45,10 @@ int getFileSize(char* filename);
 /**
  * moves file from parameter 1 to the directory in parameter 2
  * Performs basic error checking
- * @param destination a directory name
  * @param from        a file name, can be a directory
+ * @param destination a directory name
  */
-void moveFile(char* destination, char* from);
+void moveFile(char* from, char* destination);
 
 ///////////////////
 // Event helpers //

@@ -3,10 +3,12 @@ check_dir = tmp/
 bin_dir = bin/
 bin_path = $(proj_path)/$(bin_dir)
 
-CC = clang
-clibs = -lnotify -lgdk_pixbuf-2.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0
-cinclude = -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include -I/usr/include/libpng12
-cflags = -std=c99 -Wall -I$(shell dirname $(proj_path)) -pthread -D_POSIX_SOURCE
+CC := clang
+cflags := -std=c99 -Wall -D_POSIX_SOURCE -I$(shell dirname $(proj_path)) $(shell pkg-config --cflags libnotify gtk+-3.0)
+clibs :=$(shell pkg-config --libs libnotify gtk+-3.0)
+#clibs := -lnotify -lgdk_pixbuf-2.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0
+#cinclude := -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include -I/usr/include/libpng12
+#cflags := -std=c99 -Wall -I$(shell dirname $(proj_path)) -pthread -D_POSIX_SOURCE
 
 all: $(bin_dir) organizer
 	$(CC) $(bin_path)/*.o -o $(bin_path)/organizer $(cflags) $(clibs)
@@ -16,16 +18,16 @@ check: $(check_dir) organizer
 	rm -rf $(check_dir)
 
 organizer: $(bin_dir) organizer.c files common notification
-	$(CC) organizer.c -o $(bin_path)/organizer.o -c $(cflags) $(cinclude)
+	$(CC) organizer.c -o $(bin_path)/organizer.o -c $(cflags)
 
 notification: $(bin_dir) notification.c notification.h
-	$(CC) notification.c -o $(bin_path)/notification.o -c $(cflags) $(cinclude)
+	$(CC) notification.c -o $(bin_path)/notification.o -c $(cflags)
 
 files: $(bin_dir) files.c files.h notification
-	$(CC) files.c -o $(bin_path)/files.o -c $(cflags) $(cinclude)
+	$(CC) files.c -o $(bin_path)/files.o -c $(cflags)
 
 common: $(bin_dir) common.c common.h
-	$(CC) common.c -o $(bin_path)/common.o -c $(cflags) $(cinclude)
+	$(CC) common.c -o $(bin_path)/common.o -c $(cflags)
 
 $(bin_dir):
 	if [ -e $(proj_path)/$(bin_dir) ]; then\

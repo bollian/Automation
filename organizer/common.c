@@ -105,7 +105,7 @@ void writeWarning(char* format, ...)
 
 	if (warning_file)
 	{
-		fprintf(warning_file, "Warning: %sn", buffer);
+		fprintf(warning_file, "Warning: %s\n", buffer);
 	}
 	else
 	{

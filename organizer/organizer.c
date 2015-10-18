@@ -44,5 +44,6 @@ int main(int argc, char** argv)
 
 	EXIT:
 	closeInotify();
+	freeNotification();
 	return return_status;
 }

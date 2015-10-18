@@ -14,6 +14,38 @@ char* watch_dir = NULL;
 int inotify_fd = -1;
 int watch_desc = -1;
 
+FileChange* FileChange_init(FileChange* fchange, char* to, char* from)
+{
+	fchange->to = malloc(strlen(to) + 1);
+	if (fchange->to)
+	{
+		strcpy(fchange->to, to);
+		fchange->from = malloc(strlen(from) + 1);
+		if (fchange->from)
+		{
+			strcpy(fchange->from, from);
+		}
+		else
+		{
+			writeError("FileChange.from allocation failed with size %d", strlen(from) + 1);
+			return NULL;
+		}
+	}
+	else
+	{
+		writeError("FileChange.to allocation failed with size %d", strlen(to) + 1);
+		return NULL;
+	}
+	
+	return fchange;
+}
+
+void FileChange_free(FileChange* fchange)
+{
+	free(fchange->to);
+	free(fchange->from);
+}
+
 int process(int fd, char* watch_dir)
 {
 	struct inotify_event* event;
@@ -28,16 +60,15 @@ int process(int fd, char* watch_dir)
 			event = (struct inotify_event*)(buffer + i);
 			printf("\n");
 			printEvent(event);
-
+			char* extension;
+			
 			if (event->mask & IN_DELETE_SELF)
 			{
 				writeWarning("Watch directory was deleted");
 				return 2;
 			}
-			else // if (event->mask & (IN_MOVED_TO | IN_CLOSE_WRITE)) inotify allows event filtering, making condition unnecessary
+			else if ((extension = strstr(event->name, ".")) != NULL)
 			{
-				char* extension = strstr(event->name, ".");
-
 				size_t name_len = strlen(watch_dir) + strlen(event->name) + 1;
 				char* fullname = malloc(name_len);
 				snprintf(fullname, name_len, "%s%s", watch_dir, event->name);
@@ -50,71 +81,71 @@ int process(int fd, char* watch_dir)
 					printf("Extension: %s\n", extension);
 					if (strend(extension, ".txt") || strend(extension, ".pdf"))
 					{
-						moveFile("/home/calcifer/Documents", fullname);
+						moveFile(fullname, "/home/calcifer/Documents");
 					}
 					else if (strend(extension, ".tar.gz") || strend(extension, ".tar") || strend(extension, ".tar.bz2") ||
-					      strend(extension, ".zip") || strend(extension, ".7z") || strend(extension, ".ar") ||
-					      strend(extension, ".ace"))
+					         strend(extension, ".zip") || strend(extension, ".7z") || strend(extension, ".ar") ||
+					         strend(extension, ".ace"))
 					{
-						moveFile("/home/calcifer/Documents/archives", fullname);
+						moveFile(fullname, "/home/calcifer/Documents/archives");
 					}
 					else if (strend(extension, ".deb") || strend(extension, ".rpm") ||
-					      strend(extension, ".msi") ||
-					      strend(extension, ".apk") ||
-					      strend(extension, ".app"))
+					         strend(extension, ".msi") ||
+					         strend(extension, ".apk") ||
+					         strend(extension, ".app"))
 					{
-						moveFile("/home/calcifer/Documents/installers", fullname);
+						moveFile(fullname, "/home/calcifer/Documents/installers");
 					}
 					else if (strend(extension, ".torrent"))
 					{
-						moveFile("/home/calcifer/Downloads/torrents", fullname);
+						moveFile(fullname, "/home/calcifer/Downloads/torrents");
 					}
 					else if (strend(extension, ".mp4") || strend(extension, ".video") || strend(extension, ".mkv") || strend(extension, ".avi"))
 					{
-						moveFile("/home/calcifer/Videos", fullname);
+						moveFile(fullname, "/home/calcifer/Videos");
 					}
 					else if (strend(extension, ".odt") || strend(extension, ".ods") || strend(extension, ".odp") ||
-					      strend(extension, ".doc") || strend(extension, ".xls") || strend(extension, ".ppt") ||
-					      strend(extension, ".docx") || strend(extension, ".xlsx") || strend(extension, ".pptx"))
+					         strend(extension, ".doc") || strend(extension, ".xls") || strend(extension, ".ppt") ||
+					         strend(extension, ".docx") || strend(extension, ".xlsx") || strend(extension, ".pptx"))
 					{
-						moveFile("/home/calcifer/Documents/office", fullname);
+						moveFile(fullname, "/home/calcifer/Documents/office");
 					}
 					else if (strend(extension, ".ovpn"))
 					{
-						moveFile("/home/calcifer/Web", fullname);
+						moveFile(fullname, "/home/calcifer/Web");
 					}
 					else if (strend(extension, ".mp3"))
 					{
-						moveFile("/home/calcifer/Music", fullname);
+						moveFile(fullname, "/home/calcifer/Music");
 					}
 					else if (strend(extension, ".gif"))
 					{
-						moveFile("/home/calcifer/Pictures/gifs", fullname);
+						moveFile(fullname, "/home/calcifer/Pictures/gifs");
 					}
 					else if (strend(extension, ".jpg") || strend(extension, ".jpeg") ||
-					      strend(extension, ".png") || strend(extension, ".bmp") ||
-					      strend(extension, ".svg") ||
-					      strend(extension, ".tif") || strend(extension, ".tiff"))
+					         strend(extension, ".png") || strend(extension, ".bmp") ||
+					         strend(extension, ".svg") ||
+					         strend(extension, ".tif") || strend(extension, ".tiff"))
 					{
-						moveFile("/home/calcifer/Pictures", fullname);
+						moveFile(fullname, "/home/calcifer/Pictures");
 					}
 					else if (strend(extension, ".c") || strend(extension, ".h") ||
-					      strend(extension, ".cpp") || strend(extension, ".hpp") ||
-					      strend(extension, ".py") || strend(extension, ".py3") ||
-					      strend(extension, ".rb") ||
-					      strend(extension, ".cs") ||
-					      strend(extension, ".php") || strend(extension, ".js") || strend(extension, ".html") ||
-					      strend(extension, ".java"))
+					         strend(extension, ".cpp") || strend(extension, ".hpp") ||
+					         strend(extension, ".py") || strend(extension, ".py3") ||
+					         strend(extension, ".rb") ||
+					         strend(extension, ".cs") ||
+					         strend(extension, ".php") || strend(extension, ".js") || strend(extension, ".html") ||
+					         strend(extension, ".java"))
 					{
-						moveFile("/home/calcifer/Documents/code/unorganized", fullname);
+						moveFile(fullname, "/home/calcifer/Documents/code/unorganized");
 					}
 					else if (strend(extension, ".iso") || strend(extension, ".vbox") || strend(extension, ".vdi"))
 					{
-						moveFile("/home/calcifer/Documents/disc-images", fullname);
+						moveFile(fullname, "/home/calcifer/Documents/disc-images");
 					}
 					else if (strend(extension, ".desktop"))
 					{
-						moveFile("/home/calcifer/Desktop", fullname);
+						moveFile(fullname, "/home/calcifer/Desktop");
 					}
 				}
 				free(fullname);
@@ -142,7 +173,7 @@ int getFileSize(char* filename)
 	}
 }
 
-void moveFile(char* destination, char* from) // TODO: try to reduce the amount of dynamic memory allocation
+void moveFile(char* from, char* destination) // TODO: try to reduce the amount of dynamic memory allocation
 {
 	char* filename = strrfind(from, '/') + 1;
 	size_t name_len = strlen(destination) + strlen(filename) + 1;
@@ -165,7 +196,6 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 	size_t safe_len;
 	for (int m = 1; access(safe_name, F_OK) != -1; ++m)
 	{
-		printf("%s exists\n", safe_name);
 		free(safe_name);
 		safe_len = name_len + getDigitCount(m) + 3;
 		safe_name = malloc(safe_len);
@@ -175,25 +205,25 @@ void moveFile(char* destination, char* from) // TODO: try to reduce the amount o
 	end_name = safe_name;
 	name_len = safe_len; // shouldn't be necessary, but it keeps a safe state
 
-	// send notification
-	char notify_message[FILE_NAME_MAX];
-	snprintf(notify_message, FILE_NAME_MAX, "Rename \"%s\" to \"%s\"", from , end_name);
-	if (isPaused())
-	{
-		writeDebug("sent paused notification");
-		sendPausedNotification(notify_message);
-	}
-	else
-	{
-		writeDebug("sent moving notification");
-		sendMovingNotification(notify_message);
-	}
-
 	// write to status log
 	writeDebug("Rename \"%s\" to \"%s\"", from, end_name);
 	if (rename(from, end_name) < 0)
 	{
 		writeWarning("Unable to move file to destination");
+	}
+	else
+	{
+		// send notification
+		char notify_message[FILE_NAME_MAX];
+		snprintf(notify_message, FILE_NAME_MAX, "Rename \"%s\" to \"%s\"", from , end_name);
+		if (isPaused())
+		{
+			sendPausedNotification(from, end_name);
+		}
+		else
+		{
+			sendMovingNotification(from, end_name);
+		}
 	}
 	free(end_name);
 }
