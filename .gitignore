@@ -34,3 +34,4 @@
 # my stuff
 .buildcop
 bin/*
+organizer/bin/*

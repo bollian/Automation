@@ -145,6 +145,8 @@ void notificationOpenAction(NotifyNotification* notification, char* action, void
 	{
 		writeWarning("popen was unable to allocate memory in notificationOpenAction");
 	}
+
+	free(cmd);
 }
 
 void sendMovingNotification(char* from, char* dest)
