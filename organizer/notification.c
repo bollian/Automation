@@ -1,5 +1,7 @@
+#include <errno.h>
 #include <libgen.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <gtk/gtk.h>
@@ -60,13 +62,89 @@ void freeNotificationFileMovement(void* data)
  * !!! is called from the gtk thread, not the master !!!
  * @param notification the notification who's button got pushed (bit of a temper)
  * @param action       the name of the action performed
- * @param data  pointer to the FileChange that represents the movement
+ * @param data         pointer to the FileChange that represents the movement
  */
 void notificationUndoAction(NotifyNotification* notification, char* action, void* data)
 {
 	FileChange* file_change = (FileChange*)data;
 	char* destination = dirname(file_change->from);
 	moveFile(((FileChange*)file_change)->to, destination);
+}
+
+/**
+ * called when the Open button is pressed on a notification
+ * @param notification the notification who's button got pushed
+ * @param action       the name of the action performed
+ * @param data         pointer to the FileChange that represents the movement
+ */
+void notificationOpenAction(NotifyNotification* notification, char* action, void* data)
+{
+	char* cmd;
+
+	if (asprintf(&cmd, "xdg-open \"%s\"", ((FileChange*)data)->to) == -1)
+	{
+		writeWarning("Failed memory allocation in notificationOpenAction");
+		return;
+	}
+
+	FILE* _stdout = popen(cmd, "r");
+	if (_stdout)
+	{
+		if (pclose(_stdout) == -1)
+		{
+			if (errno == ECHILD)
+			{
+				writeError("notificationOpenAction->pclose wasn't able to find the specified child PID (it may have ended too quickly)");
+			}
+			else if (errno == EINTR)
+			{
+				writeError("notificationOpenAction->pclose sent an invalid signal to the child");
+			}
+			else if (errno == EINVAL)
+			{
+				writeError("notificationOpenAction->pclose->wait4 received invalid options");
+			}
+		}
+	}
+	else if (errno == EINVAL)
+	{
+		writeError("notificationOpenAction->popen received an invalid type");
+	}
+	// pipe errors
+	else if (errno == EFAULT)
+	{
+		writeError("notificationOpenAction->popen->pipe received an invalid file descriptor");
+	}
+	else if (errno == EINVAL)
+	{
+		writeError("notificationOpenAction->popen->pipe received invalid flags");
+	}
+	else if (errno == EMFILE)
+	{
+		writeError("notificationOpenAction->popen->pipe was unsuccessful because the process is using too many file descriptors");
+	}
+	else if (errno == ENFILE)
+	{
+		writeError("notificationOpenAction->popen->pipe was unsuccessful because the system limit on the total number of open files has been reached");
+	}
+	// fork errors
+	else if (errno == EAGAIN)
+	{
+		writeError(
+			"notificationOpenAction->popen->fork ran out of threads for the current user OR couldn't allocate enough memory for the parent's page tables and task structure");
+	}
+	else if (errno == ENOMEM)
+	{
+		writeError("notificationOpenAction->popen->fork failed to allocate the necessary kernel structures because memory is tight");
+	}
+	else if (errno == ENOSYS)
+	{
+		writeError("notificationOpenAction->popen->fork is not supported");
+	}
+	else
+	{
+		writeWarning("popen was unable to allocate memory in notificationOpenAction");
+	}
 }
 
 void sendMovingNotification(char* from, char* dest)
@@ -83,7 +161,7 @@ void sendMovingNotification(char* from, char* dest)
 		else
 		{
 			notification = notify_notification_new(summary, message, NULL);
-			
+
 			if (notificationActionsAllowed())
 			{
 				FileChange* file_change = malloc(sizeof(FileChange));
@@ -94,9 +172,15 @@ void sendMovingNotification(char* from, char* dest)
 				                               &notificationUndoAction,
 				                               file_change,
 				                               &freeNotificationFileMovement);
+				notify_notification_add_action(notification,
+				                               "open",
+				                               "Open",
+				                               &notificationOpenAction,
+				                               file_change,
+				                               &freeNotificationFileMovement);
 			}
 		}
-		
+
 		GError* gerror = NULL;
 		if (notify_notification_show(notification, &gerror) == false)
 		{
@@ -128,6 +212,6 @@ bool notificationActionsAllowed()
 		allowed = true;
 	}
 	g_list_free_full(capabilities, &g_free);
-	
+
 	return allowed;
 }

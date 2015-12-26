@@ -1,6 +1,7 @@
 #ifndef ORGANIZER_NOTIFICATION_H_
 #define ORGANIZER_NOTIFICATION_H_
 
+#include <stdarg.h>
 #include <stdbool.h>
 
 /**
