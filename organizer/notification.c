@@ -79,13 +79,14 @@ void notificationUndoAction(NotifyNotification* notification, char* action, void
  */
 void notificationOpenAction(NotifyNotification* notification, char* action, void* data)
 {
-	char* cmd;
-
-	if (asprintf(&cmd, "xdg-open \"%s\"", ((FileChange*)data)->to) == -1)
+	char* format = "xdg-open \"%s\"";
+	char* cmd = malloc(strlen(format) + strlen(((FileChange*)data)->to) - 1);
+	if (cmd == NULL)
 	{
 		writeWarning("Failed memory allocation in notificationOpenAction");
 		return;
 	}
+	sprintf(cmd, format, ((FileChange*)data)->to);
 
 	FILE* _stdout = popen(cmd, "r");
 	if (_stdout)
