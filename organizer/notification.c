@@ -47,14 +47,12 @@ void freeNotificationFileMovement(void* data)
 {
 	FileChange_free(data);
 	g_free(data);
-	if (pthread_equal(gtk_thread, pthread_self()))
-	{
-		writeDebug("freeNotificationFileMovement called from gtk thread");
-	}
-	else
-	{
-		writeDebug("freeNotificationFileMovement called from master thread");
-	}
+}
+
+void closeNotifyNotification(NotifyNotification* notification)
+{
+	GError* gerror = NULL;
+	notify_notification_close(notification, &gerror);
 }
 
 /**
@@ -69,6 +67,9 @@ void notificationUndoAction(NotifyNotification* notification, char* action, void
 	FileChange* file_change = (FileChange*)data;
 	char* destination = dirname(file_change->from);
 	moveFile(((FileChange*)file_change)->to, destination);
+
+	closeNotifyNotification(notification);
+	freeNotificationFileMovement(data);
 }
 
 /**
@@ -147,6 +148,8 @@ void notificationOpenAction(NotifyNotification* notification, char* action, void
 		writeWarning("popen was unable to allocate memory in notificationOpenAction");
 	}
 
+	closeNotifyNotification(notification);
+	freeNotificationFileMovement(data);
 	free(cmd);
 }
 
@@ -160,28 +163,29 @@ void sendMovingNotification(char* from, char* dest)
 		if (notification)
 		{
 			notify_notification_update(notification, summary, message, NULL);
+			notify_notification_clear_actions(notification); // actions need to be set w/ new file change data
 		}
 		else
 		{
 			notification = notify_notification_new(summary, message, NULL);
+		}
 
-			if (notificationActionsAllowed())
-			{
-				FileChange* file_change = malloc(sizeof(FileChange));
-				FileChange_init(file_change, dest, from);
-				notify_notification_add_action(notification,
-				                               "undo",
-				                               "Undo",
-				                               &notificationUndoAction,
-				                               file_change,
-				                               &freeNotificationFileMovement);
-				notify_notification_add_action(notification,
-				                               "open",
-				                               "Open",
-				                               &notificationOpenAction,
-				                               file_change,
-				                               &freeNotificationFileMovement);
-			}
+		if (notificationActionsAllowed())
+		{
+			FileChange* file_change = malloc(sizeof(FileChange));
+			FileChange_init(file_change, dest, from);
+			notify_notification_add_action(notification,
+			                               "undo",
+			                               "Undo",
+			                               &notificationUndoAction,
+			                               file_change,
+			                               NULL);
+			notify_notification_add_action(notification,
+			                               "open",
+			                               "Open",
+			                               &notificationOpenAction,
+			                               file_change,
+			                               NULL);
 		}
 
 		GError* gerror = NULL;
