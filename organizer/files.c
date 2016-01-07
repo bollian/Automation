@@ -36,7 +36,7 @@ FileChange* FileChange_init(FileChange* fchange, char* to, char* from)
 		writeError("FileChange.to allocation failed with size %d", strlen(to) + 1);
 		return NULL;
 	}
-	
+
 	return fchange;
 }
 
@@ -52,110 +52,106 @@ int process(int fd, char* watch_dir)
 	int length = 0;
 	char buffer[BUF_SIZE];
 
-	while (true)
+	length = read(fd, buffer, BUF_SIZE);
+	for (int i = 0; i < length;)
 	{
-		length = read(fd, buffer, BUF_SIZE);
-		for (int i = 0; i < length;)
+		event = (struct inotify_event*)(buffer + i);
+		printf("\n");
+		printEvent(event);
+		char* extension;
+
+		if (event->mask & IN_DELETE_SELF)
 		{
-			event = (struct inotify_event*)(buffer + i);
-			printf("\n");
-			printEvent(event);
-			char* extension;
-			
-			if (event->mask & IN_DELETE_SELF)
-			{
-				writeWarning("Watch directory was deleted");
-				return 2;
-			}
-			else if ((extension = strstr(event->name, ".")) != NULL)
-			{
-				size_t name_len = strlen(watch_dir) + strlen(event->name) + 1;
-				char* fullname = malloc(name_len);
-				snprintf(fullname, name_len, "%s%s", watch_dir, event->name);
-
-				int file_size = getFileSize(fullname);
-				printf("File size: %d\n", file_size);
-
-				if (file_size > 0) // firefox likes to create empty files for the temp files to be renamed to
-				{
-					printf("Extension: %s\n", extension);
-					if (strend(extension, ".txt") || strend(extension, ".pdf"))
-					{
-						moveFile(fullname, "/home/calcifer/Documents");
-					}
-					else if (strend(extension, ".tar.gz") || strend(extension, ".tar") || strend(extension, ".tar.bz2") ||
-					         strend(extension, ".zip") || strend(extension, ".7z") || strend(extension, ".ar") ||
-					         strend(extension, ".ace"))
-					{
-						moveFile(fullname, "/home/calcifer/Documents/archives");
-					}
-					else if (strend(extension, ".deb") || strend(extension, ".rpm") ||
-					         strend(extension, ".msi") ||
-					         strend(extension, ".apk") ||
-					         strend(extension, ".app"))
-					{
-						moveFile(fullname, "/home/calcifer/Documents/installers");
-					}
-					else if (strend(extension, ".torrent"))
-					{
-						moveFile(fullname, "/home/calcifer/Downloads/torrents");
-					}
-					else if (strend(extension, ".mp4") || strend(extension, ".video") || strend(extension, ".mkv") || strend(extension, ".avi"))
-					{
-						moveFile(fullname, "/home/calcifer/Videos");
-					}
-					else if (strend(extension, ".odt") || strend(extension, ".ods") || strend(extension, ".odp") ||
-					         strend(extension, ".doc") || strend(extension, ".xls") || strend(extension, ".ppt") ||
-					         strend(extension, ".docx") || strend(extension, ".xlsx") || strend(extension, ".pptx"))
-					{
-						moveFile(fullname, "/home/calcifer/Documents/office");
-					}
-					else if (strend(extension, ".ovpn"))
-					{
-						moveFile(fullname, "/home/calcifer/Web");
-					}
-					else if (strend(extension, ".mp3"))
-					{
-						moveFile(fullname, "/home/calcifer/Music");
-					}
-					else if (strend(extension, ".gif"))
-					{
-						moveFile(fullname, "/home/calcifer/Pictures/gifs");
-					}
-					else if (strend(extension, ".jpg") || strend(extension, ".jpeg") ||
-					         strend(extension, ".png") || strend(extension, ".bmp") ||
-					         strend(extension, ".svg") ||
-					         strend(extension, ".tif") || strend(extension, ".tiff"))
-					{
-						moveFile(fullname, "/home/calcifer/Pictures");
-					}
-					else if (strend(extension, ".c") || strend(extension, ".h") ||
-					         strend(extension, ".cpp") || strend(extension, ".hpp") ||
-					         strend(extension, ".py") || strend(extension, ".py3") ||
-					         strend(extension, ".rb") ||
-					         strend(extension, ".cs") ||
-					         strend(extension, ".php") || strend(extension, ".js") || strend(extension, ".html") ||
-					         strend(extension, ".java"))
-					{
-						moveFile(fullname, "/home/calcifer/Documents/code/unorganized");
-					}
-					else if (strend(extension, ".iso") || strend(extension, ".vbox") || strend(extension, ".vdi"))
-					{
-						moveFile(fullname, "/home/calcifer/Documents/disc-images");
-					}
-					else if (strend(extension, ".desktop"))
-					{
-						moveFile(fullname, "/home/calcifer/Desktop");
-					}
-				}
-				free(fullname);
-			}
-
-			i += sizeof(struct inotify_event) + event->len;
+			writeWarning("Watch directory was deleted");
+			return 1;
 		}
+		else if ((extension = strstr(event->name, ".")) != NULL)
+		{
+			size_t name_len = strlen(watch_dir) + strlen(event->name) + 1;
+			char* fullname = malloc(name_len);
+			snprintf(fullname, name_len, "%s%s", watch_dir, event->name);
+
+			int file_size = getFileSize(fullname);
+			printf("File size: %d\n", file_size);
+
+			if (file_size > 0) // firefox likes to create empty files for the temp files to be renamed to
+			{
+				printf("Extension: %s\n", extension);
+				if (strend(extension, ".txt") || strend(extension, ".pdf"))
+				{
+					moveFile(fullname, "/home/calcifer/Documents");
+				}
+				else if (strend(extension, ".tar.gz") || strend(extension, ".tar") || strend(extension, ".tar.bz2") ||
+				         strend(extension, ".zip") || strend(extension, ".7z") || strend(extension, ".ar") ||
+				         strend(extension, ".ace"))
+				{
+					moveFile(fullname, "/home/calcifer/Documents/archives");
+				}
+				else if (strend(extension, ".deb") || strend(extension, ".rpm") ||
+				         strend(extension, ".msi") ||
+				         strend(extension, ".apk") ||
+				         strend(extension, ".app"))
+				{
+					moveFile(fullname, "/home/calcifer/Documents/installers");
+				}
+				else if (strend(extension, ".torrent"))
+				{
+					moveFile(fullname, "/home/calcifer/Downloads/torrents");
+				}
+				else if (strend(extension, ".mp4") || strend(extension, ".video") || strend(extension, ".mkv") || strend(extension, ".avi"))
+				{
+					moveFile(fullname, "/home/calcifer/Videos");
+				}
+				else if (strend(extension, ".odt") || strend(extension, ".ods") || strend(extension, ".odp") ||
+				         strend(extension, ".doc") || strend(extension, ".xls") || strend(extension, ".ppt") ||
+				         strend(extension, ".docx") || strend(extension, ".xlsx") || strend(extension, ".pptx"))
+				{
+					moveFile(fullname, "/home/calcifer/Documents/office");
+				}
+				else if (strend(extension, ".ovpn"))
+				{
+					moveFile(fullname, "/home/calcifer/Web");
+				}
+				else if (strend(extension, ".mp3"))
+				{
+					moveFile(fullname, "/home/calcifer/Music");
+				}
+				else if (strend(extension, ".gif"))
+				{
+					moveFile(fullname, "/home/calcifer/Pictures/gifs");
+				}
+				else if (strend(extension, ".jpg") || strend(extension, ".jpeg") ||
+				         strend(extension, ".png") || strend(extension, ".bmp") ||
+				         strend(extension, ".svg") ||
+				         strend(extension, ".tif") || strend(extension, ".tiff"))
+				{
+					moveFile(fullname, "/home/calcifer/Pictures");
+				}
+				else if (strend(extension, ".c") || strend(extension, ".h") ||
+				         strend(extension, ".cpp") || strend(extension, ".hpp") ||
+				         strend(extension, ".py") || strend(extension, ".py3") ||
+				         strend(extension, ".rb") ||
+				         strend(extension, ".cs") ||
+				         strend(extension, ".php") || strend(extension, ".js") || strend(extension, ".html") ||
+				         strend(extension, ".java"))
+				{
+					moveFile(fullname, "/home/calcifer/Documents/code/unorganized");
+				}
+				else if (strend(extension, ".iso") || strend(extension, ".vbox") || strend(extension, ".vdi"))
+				{
+					moveFile(fullname, "/home/calcifer/Documents/disc-images");
+				}
+				else if (strend(extension, ".desktop"))
+				{
+					moveFile(fullname, "/home/calcifer/Desktop");
+				}
+			}
+			free(fullname);
+		}
+
+		i += sizeof(struct inotify_event) + event->len;
 	}
 
-	writeError("Reached end of process");
 	return 0; // shouldn't ever be possible, infinite loop
 }
 
@@ -234,26 +230,26 @@ InotifyDetail initInotify(char* dirname)
 		.inotify_fd = -1,
 		.watch_desc = -1
 	};
-	
+
 	detail.inotify_fd = inotify_init1(0);
 	if (detail.inotify_fd < 0)
 	{
 		writeError("Failed to create inotify object");
 		return detail;
 	}
-	
+
 	detail.watch_desc = inotify_add_watch(detail.inotify_fd, dirname, IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE_SELF);
 	if (detail.watch_desc < 0)
 	{
 		writeError("Failed to add watch to inotify object");
 		return detail;
 	}
-	
+
 	inotify_fd = detail.inotify_fd;
 	watch_desc = detail.watch_desc;
 	watch_dir = malloc(strlen(dirname) + 1);
 	strcpy(watch_dir, dirname);
-	
+
 	return detail;
 }
 
